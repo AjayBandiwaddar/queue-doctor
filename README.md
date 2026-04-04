@@ -1,5 +1,21 @@
 ﻿---
 title: Queue Doctor
+emoji: 🏥
+colorFrom: red
+colorTo: red
+sdk: docker
+pinned: false
+tags:
+  - openenv
+  - rl
+  - reinforcement-learning
+  - healthcare
+  - triage
+  - agent
+---
+
+
+title: Queue Doctor
 emoji: ðŸ¥
 colorFrom: red
 colorTo: red
@@ -211,3 +227,4 @@ systematically neglects lower-acuity patients who also need care.
 This environment models that tradeoff faithfully. The reward function,
 grader weights, and severity thresholds are all derived from published
 clinical guidelines â€” not tuned to produce aesthetically pleasing scores.
+
