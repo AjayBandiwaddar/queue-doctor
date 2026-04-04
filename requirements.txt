@@ -1,0 +1,5 @@
+openenv-core
+fastmcp
+fastapi
+uvicorn[standard]
+openai

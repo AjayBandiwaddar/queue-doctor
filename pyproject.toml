@@ -1,0 +1,19 @@
+[project]
+name = "queue-doctor"
+version = "1.0.0"
+description = "OpenEnv environment for hospital emergency department triage"
+requires-python = ">=3.11"
+dependencies = [
+    "openenv-core",
+    "fastmcp",
+    "fastapi",
+    "uvicorn[standard]",
+    "openai",
+]
+
+[project.scripts]
+server = "server.app:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
