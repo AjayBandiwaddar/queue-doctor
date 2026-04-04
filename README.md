@@ -1,8 +1,8 @@
----
+﻿---
 title: Queue Doctor
-emoji: 🏥
+emoji: ðŸ¥
 colorFrom: red
-colorTo: orange
+colorTo: red
 sdk: docker
 pinned: false
 tags:
@@ -14,7 +14,7 @@ tags:
   - agent
 ---
 
-# Queue Doctor — OpenEnv Hospital Triage Environment
+# Queue Doctor â€” OpenEnv Hospital Triage Environment
 
 A genuine multi-step reinforcement learning environment for hospital emergency
 department triage, built for the Meta PyTorch OpenEnv Hackathon.
@@ -24,7 +24,7 @@ department triage, built for the Meta PyTorch OpenEnv Hackathon.
 An AI agent acts as a triage coordinator managing an emergency department
 queue. At each step, the agent observes the current patient queue and decides
 which patient to treat. The environment state changes meaningfully after every
-decision — new patients arrive, wait times increase, conditions deteriorate —
+decision â€” new patients arrive, wait times increase, conditions deteriorate â€”
 making this a true Markov Decision Process.
 
 **A better policy produces measurably better outcomes.** A random agent scores
@@ -40,7 +40,7 @@ consequences that persist into future steps:
 - Choosing *not* to serve a deteriorating patient means their severity worsens
   at step N+4, making the queue harder to manage
 - Conserving ICU beds before a mass casualty surge (Task 3) requires planning
-  across 15 steps — not just reacting to the current state
+  across 15 steps â€” not just reacting to the current state
 
 The agent must discover non-obvious strategies like: serve deteriorating
 patients before higher-severity stable patients, conserve ICU capacity before
@@ -48,22 +48,22 @@ a predicted surge, and balance fairness with urgency.
 
 ## Tasks
 
-### Task 1 — Basic Triage (Easy)
+### Task 1 â€” Basic Triage (Easy)
 - **Setup:** 6 patients present at step 0, 1 doctor, 10 steps
 - **Challenge:** Discover the optimal service order (hint: it's not always
-  severity order — wait times interact with the reward function)
+  severity order â€” wait times interact with the reward function)
 - **Optimal score:** ~0.87 | **Random baseline:** ~0.40
 - **Grader:** Normalized cumulative reward (standard episodic return)
 
-### Task 2 — Dynamic Queue Management (Medium)
+### Task 2 â€” Dynamic Queue Management (Medium)
 - **Setup:** 17 patients arriving across 20 steps, 2 doctors
 - **Challenge:** Adapt to emergency arrivals at steps 4 and 10 while
   preventing systematic neglect of lower-priority patients
 - **Grader:** Composite of throughput (60%) + Jain's Fairness Index (40%)
 - **Weight rationale:** Moskop & Sklar (2002), Cambridge Quarterly of
-  Healthcare Ethics — empirical ED prioritization research
+  Healthcare Ethics â€” empirical ED prioritization research
 
-### Task 3 — Mass Casualty Resource Management (Hard)
+### Task 3 â€” Mass Casualty Resource Management (Hard)
 - **Setup:** 20 patients, 3 doctors, 2 ICU beds, 30 steps
 - **Complexity elements:**
   - Patient deterioration: P005 and P006 worsen if untreated within 4/3 steps
@@ -98,7 +98,7 @@ Reference: Manchester Triage Group (2014). *Emergency Triage*, 3rd Ed.
 | `wait()` | Skip step (penalized if patients waiting) | Yes (+1 step) |
 | `get_queue_state()` | Observe current state | No |
 
-Resource errors (no ICU bed, insufficient doctors) do **not** advance time —
+Resource errors (no ICU bed, insufficient doctors) do **not** advance time â€”
 the agent receives an error message and must choose a different patient.
 
 ## Observation Space
@@ -137,12 +137,12 @@ Each `get_queue_state()` call returns:
 
 ```
 list_tasks()
-  → start_task(task_id)
-  → get_queue_state()
-  → loop:
+  â†’ start_task(task_id)
+  â†’ get_queue_state()
+  â†’ loop:
       serve_patient(patient_id)  # or wait()
       get_queue_state()          # optional: observe before next action
-  → finalize_episode()           # returns final normalized score [0, 1]
+  â†’ finalize_episode()           # returns final normalized score [0, 1]
 ```
 
 ## Setup
@@ -184,21 +184,21 @@ python inference.py
 
 ```
 queue-doctor/
-├── Dockerfile
-├── README.md
-├── client.py          # MCPToolClient for connecting to the environment
-├── inference.py       # Baseline inference script
-├── openenv.yaml       # OpenEnv spec manifest
-├── pyproject.toml
-├── requirements.txt
-└── server/
-    ├── __init__.py
-    ├── app.py             # FastAPI server (create_app pattern)
-    ├── graders.py         # Principled graders with academic citations
-    ├── models.py          # Patient data model (Manchester Triage System)
-    ├── queue_engine.py    # Deterministic queue simulation
-    ├── queue_environment.py  # MCPEnvironment with MCP tools
-    └── tasks.py           # Deterministic task configurations
+â”œâ”€â”€ Dockerfile
+â”œâ”€â”€ README.md
+â”œâ”€â”€ client.py          # MCPToolClient for connecting to the environment
+â”œâ”€â”€ inference.py       # Baseline inference script
+â”œâ”€â”€ openenv.yaml       # OpenEnv spec manifest
+â”œâ”€â”€ pyproject.toml
+â”œâ”€â”€ requirements.txt
+â””â”€â”€ server/
+    â”œâ”€â”€ __init__.py
+    â”œâ”€â”€ app.py             # FastAPI server (create_app pattern)
+    â”œâ”€â”€ graders.py         # Principled graders with academic citations
+    â”œâ”€â”€ models.py          # Patient data model (Manchester Triage System)
+    â”œâ”€â”€ queue_engine.py    # Deterministic queue simulation
+    â”œâ”€â”€ queue_environment.py  # MCPEnvironment with MCP tools
+    â””â”€â”€ tasks.py           # Deterministic task configurations
 ```
 
 ## Why This Matters
@@ -210,4 +210,4 @@ systematically neglects lower-acuity patients who also need care.
 
 This environment models that tradeoff faithfully. The reward function,
 grader weights, and severity thresholds are all derived from published
-clinical guidelines — not tuned to produce aesthetically pleasing scores.
+clinical guidelines â€” not tuned to produce aesthetically pleasing scores.
