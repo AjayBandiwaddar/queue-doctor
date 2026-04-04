@@ -1,2 +1,2 @@
-from .client import QueueDoctorEnv
-__all__ = ["QueueDoctorEnv"]
+﻿from .queue_environment import QueueDoctorEnvironment
+__all__ = ["QueueDoctorEnvironment"]
