@@ -11,16 +11,23 @@ This is a true Markov Decision Process: the agent's action at step N
 changes the state available at step N+1. A better policy produces
 measurably better outcomes across all three tasks.
 
+Stochasticity:
+    start_task() accepts an optional seed parameter. When provided, small
+    random perturbations are applied to patient attributes (severity ±1
+    with 15% probability, arrival step ±1 with 10% probability). This
+    ensures each episode is distinct, prevents solution memorization, and
+    produces non-zero score variance across runs (required by Phase 2).
+
 Episode workflow:
     list_tasks()
-    → start_task(task_id)
+    → start_task(task_id, seed=<int>)   # seed optional
     → get_queue_state()
     → [serve_patient(patient_id) | wait()] × N steps
     → finalize_episode()
 """
 
 import json
-from typing import Any, Optional
+from typing import Optional
 from uuid import uuid4
 
 try:
@@ -46,14 +53,14 @@ class QueueDoctorEnvironment(MCPEnvironment):
         task_2_medium — Dynamic arrivals, 2 doctors, 20 steps
         task_3_hard   — Mass casualty, deterioration, ICU, 3 doctors, 30 steps
 
-    Available MCP tools:
-        list_tasks()               → available tasks and metadata
-        start_task(task_id)        → initialize task, returns description + initial queue
-        get_queue_state()          → current queue, resources, step info (no time advance)
-        serve_patient(patient_id)  → treat patient, advance time by 1 step
-        wait()                     → skip step (penalized), advance time by 1 step
-        finalize_episode()         → compute final score with principled grader
-        get_current_state()        → environment-level metadata
+    MCP tools:
+        list_tasks()                    → task catalogue with metadata
+        start_task(task_id, seed)       → init episode (seed optional for stochasticity)
+        get_queue_state()               → observe current state (no time advance)
+        serve_patient(patient_id)       → treat patient, advance 1 step
+        wait()                          → skip step (penalized), advance 1 step
+        finalize_episode()              → compute final normalized score
+        get_current_state()             → environment-level metadata
     """
 
     def __init__(self):
@@ -63,62 +70,70 @@ class QueueDoctorEnvironment(MCPEnvironment):
         def list_tasks() -> str:
             """
             List all available triage tasks with metadata.
-
-            Returns task IDs, names, difficulty levels, available resources,
-            and a brief description of what makes each task challenging.
+            Returns task IDs, names, difficulty, resources, and descriptions.
             """
             return json.dumps([
                 {
-                    "task_id":       tid,
-                    "task_name":     t["task_name"],
-                    "difficulty":    t["difficulty"],
-                    "max_steps":     t["max_steps"],
-                    "num_doctors":   t["num_doctors"],
-                    "icu_beds":      t.get("icu_beds", 0),
-                    "total_patients": len(t["arrivals"]),
-                    "description":   t["description"],
+                    "task_id":         tid,
+                    "task_name":       t["task_name"],
+                    "difficulty":      t["difficulty"],
+                    "max_steps":       t["max_steps"],
+                    "num_doctors":     t["num_doctors"],
+                    "icu_beds":        t.get("icu_beds", 0),
+                    "total_patients":  len(t["arrivals"]),
+                    "description":     t["description"],
                 }
                 for tid, t in TASKS.items()
             ], indent=2)
 
         @mcp.tool
-        def start_task(task_id: str) -> str:
+        def start_task(task_id: str, seed: int = None) -> str:
             """
             Initialize a task episode. Must be called before any actions.
 
             Args:
                 task_id: One of 'task_1_easy', 'task_2_medium', 'task_3_hard'
+                seed:    Optional integer seed for episode randomization.
+                         When provided, small stochastic perturbations are
+                         applied to patient attributes (severity ±1 with 15%
+                         probability, arrival step ±1 with 10% probability).
+                         Use different seeds across runs to get score variance.
+                         Omit for the deterministic baseline episode.
 
-            Returns task description, rules, initial queue state, and workflow guide.
+            Returns task description, rules, initial queue state, and workflow.
             """
             if task_id not in TASKS:
-                return json.dumps({"error": f"Unknown task_id '{task_id}'. "
-                                            f"Valid: {list(TASKS.keys())}"})
+                return json.dumps({
+                    "error": f"Unknown task_id '{task_id}'. "
+                             f"Valid: {list(TASKS.keys())}"
+                })
 
             self._active_task_id = task_id
-            self._engine = QueueEngine(TASKS[task_id])
+            self._engine         = QueueEngine(TASKS[task_id], seed=seed)
             self._state.step_count += 1
 
-            task = TASKS[task_id]
+            task          = TASKS[task_id]
             initial_state = self._engine.get_state()
 
             return json.dumps({
-                "task_id":       task_id,
-                "task_name":     task["task_name"],
-                "difficulty":    task["difficulty"],
-                "description":   task["description"],
-                "max_steps":     task["max_steps"],
-                "num_doctors":   task["num_doctors"],
-                "icu_beds":      task.get("icu_beds", 0),
-                "initial_queue": initial_state["queue"],
-                "queue_length":  initial_state["queue_length"],
+                "task_id":         task_id,
+                "task_name":       task["task_name"],
+                "difficulty":      task["difficulty"],
+                "description":     task["description"],
+                "max_steps":       task["max_steps"],
+                "num_doctors":     task["num_doctors"],
+                "icu_beds":        task.get("icu_beds", 0),
+                "seed":            seed,
+                "initial_queue":   initial_state["queue"],
+                "queue_length":    initial_state["queue_length"],
                 "triage_advisory": initial_state["triage_advisory"],
                 "workflow": (
                     "1. Call get_queue_state() to observe current patients.\n"
                     "2. Call serve_patient(patient_id) to treat a patient "
                     "   — this advances time by 1 step.\n"
-                    "3. OR call wait() to skip a step (penalized if patients are waiting).\n"
-                    "4. Repeat until done=true or steps_remaining=0.\n"
+                    "3. OR call wait() to skip a step "
+                    "   (penalized if patients are waiting).\n"
+                    "4. Repeat until done=true.\n"
                     "5. Call finalize_episode() to get your final score."
                 ),
             }, indent=2)
@@ -130,19 +145,20 @@ class QueueDoctorEnvironment(MCPEnvironment):
 
             Returns:
                 - Current step and steps remaining
-                - All patients sorted by triage priority (severity, then wait time)
+                - All patients sorted by priority (severity, then wait time)
+                - can_serve_now flag per patient (resource availability check)
                 - Available doctors and ICU beds
-                - Patients served and missed emergencies so far
+                - Patients served and missed emergencies
                 - Cumulative reward
-                - Triage advisory with urgent recommendations
+                - Triage advisory (for inspection — not used by the inference agent)
                 - done flag
             """
             if self._engine is None:
-                return json.dumps({"error": "No active task. Call start_task(task_id) first."})
-
+                return json.dumps({
+                    "error": "No active task. Call start_task(task_id) first."
+                })
             self._state.step_count += 1
-            state = self._engine.get_state()
-            return json.dumps(state, indent=2)
+            return json.dumps(self._engine.get_state(), indent=2)
 
         @mcp.tool
         def serve_patient(patient_id: str) -> str:
@@ -150,29 +166,33 @@ class QueueDoctorEnvironment(MCPEnvironment):
             Assign a doctor to treat a patient. ADVANCES SIMULATION BY 1 STEP.
 
             After this action:
-            - Patient is removed from queue
+            - Patient removed from queue
             - Wait times increase for all remaining patients
-            - New patients may arrive (per deterministic schedule)
+            - New patients may arrive (deterministic or seeded schedule)
             - Deteriorating patients' countdowns decrease (Task 3)
             - Step counter increments
 
+            Resource errors (no ICU bed, insufficient doctors) do NOT advance
+            time — the agent receives an error message and must choose again.
+
             Args:
-                patient_id: Patient ID to serve (e.g. 'P001', 'P007')
+                patient_id: Patient ID (e.g. 'P001', 'P007')
 
             Returns step reward, updated queue state, and events log.
             """
             if self._engine is None:
-                return json.dumps({"error": "No active task. Call start_task(task_id) first."})
-
+                return json.dumps({
+                    "error": "No active task. Call start_task(task_id) first."
+                })
             if self._engine.step >= self._engine.max_steps:
                 return json.dumps({
-                    "error": "Episode complete. Call finalize_episode() to get your score.",
-                    "done": True,
+                    "error": "Episode complete. Call finalize_episode().",
+                    "done":  True,
                 })
 
             reward, new_state, events = self._engine.serve_patient(patient_id)
-            self._cumulative_reward += reward
-            self._state.step_count += 1
+            self._cumulative_reward  += reward
+            self._state.step_count   += 1
 
             return json.dumps({
                 "action":      f"serve_patient({patient_id})",
@@ -192,30 +212,27 @@ class QueueDoctorEnvironment(MCPEnvironment):
             """
             Skip this step without serving any patient. ADVANCES SIMULATION BY 1 STEP.
 
-            Penalties applied when patients are waiting:
-              - Emergency (P1) in queue: -0.30 per patient (severe)
-              - Urgent (P2-P3) in queue: -0.10 (moderate)
-              - Any patient in queue:    -0.05 (minor)
-              - Empty queue:              0.00 (no penalty)
-
-            Use wait() only when:
-            - Queue is empty
-            - Conserving resources for an incoming surge (Task 3 strategy)
+            Penalties:
+              Emergency (severity 1) in queue: -0.30 per patient
+              Urgent (severity 2-3) in queue:  -0.10
+              Any patient in queue:             -0.05
+              Empty queue:                       0.00
 
             Returns step penalty, updated queue state, and events log.
             """
             if self._engine is None:
-                return json.dumps({"error": "No active task. Call start_task(task_id) first."})
-
+                return json.dumps({
+                    "error": "No active task. Call start_task(task_id) first."
+                })
             if self._engine.step >= self._engine.max_steps:
                 return json.dumps({
                     "error": "Episode complete. Call finalize_episode().",
-                    "done": True,
+                    "done":  True,
                 })
 
             penalty, new_state, events = self._engine.wait()
-            self._cumulative_reward += penalty
-            self._state.step_count += 1
+            self._cumulative_reward   += penalty
+            self._state.step_count    += 1
 
             return json.dumps({
                 "action":      "wait()",
@@ -230,34 +247,37 @@ class QueueDoctorEnvironment(MCPEnvironment):
             """
             Finalize the current task and compute the final normalized score.
 
-            Applies the full principled grader to produce a score in [0, 1].
-            Must be called to record the task result.
+            Applies the principled grader to produce a score in [0, 1].
+            Grader weights are derived from published clinical literature —
+            not tuned to hit target scores.
 
             Returns final score, component scores, and full episode statistics.
             """
             if self._engine is None:
-                return json.dumps({"error": "No active task. Call start_task(task_id) first."})
+                return json.dumps({
+                    "error": "No active task. Call start_task(task_id) first."
+                })
 
             task_id = self._active_task_id
             task    = TASKS[task_id]
             result  = GRADERS[task["grader"]](self._engine)
 
             self._finalized_tasks[task_id] = result["score"]
-            done        = len(self._finalized_tasks) >= len(TASKS)
-            self._done  = done
+            done       = len(self._finalized_tasks) >= len(TASKS)
+            self._done = done
             self._state.step_count += 1
 
             return json.dumps({
-                "task_id":          task_id,
-                "task_name":        task["task_name"],
-                "difficulty":       task["difficulty"],
+                "task_id":         task_id,
+                "task_name":       task["task_name"],
+                "difficulty":      task["difficulty"],
                 **result,
-                "episode_steps":    self._engine.step,
-                "patients_served":  len(self._engine.served),
-                "served_detail":    self._engine.served,
-                "tasks_completed":  len(self._finalized_tasks),
-                "tasks_total":      len(TASKS),
-                "all_done":         done,
+                "episode_steps":   self._engine.step,
+                "patients_served": len(self._engine.served),
+                "served_detail":   self._engine.served,
+                "tasks_completed": len(self._finalized_tasks),
+                "tasks_total":     len(TASKS),
+                "all_done":        done,
             }, indent=2)
 
         @mcp.tool
@@ -274,22 +294,20 @@ class QueueDoctorEnvironment(MCPEnvironment):
             }, indent=2)
 
         super().__init__(mcp)
-        self._state = State(episode_id=str(uuid4()), step_count=0)
-        self._cumulative_reward: float    = 0.0
-        self._done: bool                  = False
-        self._active_task_id: Optional[str]      = None
-        self._engine: Optional[QueueEngine]      = None
-        self._finalized_tasks: dict       = {}
+        self._state                         = State(episode_id=str(uuid4()), step_count=0)
+        self._cumulative_reward: float      = 0.0
+        self._done: bool                    = False
+        self._active_task_id: Optional[str] = None
+        self._engine: Optional[QueueEngine] = None
+        self._finalized_tasks: dict         = {}
 
     def reset(self, seed=None, episode_id=None, **kwargs) -> Observation:
-        """Reset environment for a new episode."""
         self._state               = State(episode_id=episode_id or str(uuid4()), step_count=0)
         self._cumulative_reward   = 0.0
         self._done                = False
         self._active_task_id      = None
         self._engine              = None
         self._finalized_tasks     = {}
-
         return Observation(
             done=False,
             reward=0.0,
@@ -297,8 +315,9 @@ class QueueDoctorEnvironment(MCPEnvironment):
                 "status":  "ready",
                 "message": (
                     "Queue Doctor ready. "
-                    "Workflow: list_tasks() → start_task(task_id) → "
-                    "get_queue_state() → [serve_patient(id) or wait()] × N → "
+                    "Workflow: list_tasks() → start_task(task_id, seed=<int>) → "
+                    "get_queue_state() → "
+                    "[serve_patient(patient_id) or wait()] × N → "
                     "finalize_episode()"
                 ),
                 "tasks_available": list(TASKS.keys()),
@@ -307,9 +326,10 @@ class QueueDoctorEnvironment(MCPEnvironment):
 
     def _step_impl(self, action, timeout_s=None, **kwargs) -> Observation:
         return Observation(
-            done=False,
-            reward=0.0,
-            metadata={"error": f"Unknown action: {type(action).__name__}. Use MCP tools."},
+            done=False, reward=0.0,
+            metadata={
+                "error": f"Unknown action: {type(action).__name__}. Use MCP tools."
+            },
         )
 
     def step(self, action, timeout_s=None, **kwargs) -> Observation:
