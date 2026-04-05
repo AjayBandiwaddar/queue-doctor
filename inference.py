@@ -74,32 +74,129 @@ OR
 {"action": "wait", "reasoning": "Queue is empty"}"""
 
 
+# def call_llm(queue_state: dict) -> dict:
+#     """
+#     Call LLM with current queue state. Returns parsed action decision.
+#     Triage advisory is intentionally excluded from the prompt â€” the agent
+#     must reason from raw patient data, not pre-computed recommendations.
+#     """
+#     queue = queue_state.get("queue", [])
+
+#     lines = []
+#     for p in queue:
+#         servable = "âœ“ CAN SERVE" if p.get("can_serve_now", True) else f"âœ— BLOCKED ({p.get('cannot_serve_reason', 'resource unavailable')})"
+#         line = (
+#             f"  {p['patient_id']}: severity={p['severity']} ({p.get('severity_name','?')})"
+#             f", waited={p['wait_time']} steps, {servable}"
+#         )
+#         if p.get("deterioration_countdown"):
+#             line += f" âš ï¸ DETERIORATES IN {p['deterioration_countdown']} STEPS"
+#         if p.get("requires_icu"):
+#             line += " [needs ICU bed]"
+#         if p.get("requires_specialist"):
+#             line += " [needs 2 doctors]"
+#         lines.append(line)
+
+#     resource_lines = [
+#         f"Available doctors: {queue_state['available_doctors']}",
+#     ]
+#     if queue_state.get("available_icu_beds") is not None:
+#         resource_lines.append(
+#             f"Available ICU beds: {queue_state['available_icu_beds']}"
+#             f"/{queue_state.get('total_icu_beds', '?')}"
+#         )
+
+#     prompt = (
+#         f"Step {queue_state['step']}/{queue_state['max_steps']} "
+#         f"| Steps remaining: {queue_state['steps_remaining']}\n"
+#         f"{' | '.join(resource_lines)}\n"
+#         f"Patients served: {queue_state['patients_served']} "
+#         f"| Missed emergencies: {queue_state['missed_emergencies']}\n\n"
+#         f"CURRENT QUEUE ({queue_state['queue_length']} patients):\n"
+#         f"{chr(10).join(lines) if lines else '  [Queue is empty]'}\n\n"
+#         f"Choose your action. Remember: NEVER wait if any patient has can_serve_now=true."
+#     )
+
+#     response = client.chat.completions.create(
+#         model=MODEL_NAME,
+#         messages=[
+#             {"role": "system", "content": SYSTEM_PROMPT},
+#             {"role": "user",   "content": prompt},
+#         ],
+#         temperature=0.0,
+#         max_tokens=150,
+#     )
+#     raw = response.choices[0].message.content.strip()
+#     time.sleep(2)
+
+#     # Strip markdown fences if present
+#     if "```" in raw:
+#         raw = raw.split("```")[1].replace("json", "").strip()
+
+#     try:
+#         return json.loads(raw)
+#     except (json.JSONDecodeError, IndexError):
+#         # Fallback: serve highest-priority servable patient, never wait if avoidable
+#         servable = [p for p in queue if p.get("can_serve_now", True)]
+#         if servable:
+#             return {
+#                 "action": "serve_patient",
+#                 "patient_id": servable[0]["patient_id"],
+#                 "reasoning": "fallback â€” highest-priority servable patient",
+#             }
+#         if queue:
+#             # All patients blocked by resources â€” wait is the only option
+#             return {"action": "wait", "reasoning": "fallback â€” all patients resource-blocked"}
+#         return {"action": "wait", "reasoning": "fallback â€” queue empty"}
+
+
+# def _best_servable_patient(queue: list) -> str | None:
+#     """Return patient_id of highest-priority servable patient, or None."""
+#     servable = [p for p in queue if p.get("can_serve_now", True)]
+#     return servable[0]["patient_id"] if servable else None
+
 def call_llm(queue_state: dict) -> dict:
     """
     Call LLM with current queue state. Returns parsed action decision.
-    Triage advisory is intentionally excluded from the prompt â€” the agent
+    Triage advisory is intentionally excluded from the prompt — the agent
     must reason from raw patient data, not pre-computed recommendations.
+    Falls back to greedy policy if the API call fails for any reason
+    (rate limit, credits exhausted, parse error).
     """
     queue = queue_state.get("queue", [])
 
+    def greedy_fallback() -> dict:
+        servable = [p for p in queue if p.get("can_serve_now", True)]
+        if servable:
+            return {
+                "action": "serve_patient",
+                "patient_id": servable[0]["patient_id"],
+                "reasoning": "greedy fallback — highest-priority servable patient",
+            }
+        if queue:
+            return {"action": "wait", "reasoning": "greedy fallback — all patients resource-blocked"}
+        return {"action": "wait", "reasoning": "greedy fallback — queue empty"}
+
     lines = []
     for p in queue:
-        servable = "âœ“ CAN SERVE" if p.get("can_serve_now", True) else f"âœ— BLOCKED ({p.get('cannot_serve_reason', 'resource unavailable')})"
+        servable_flag = (
+            "CAN SERVE"
+            if p.get("can_serve_now", True)
+            else f"BLOCKED ({p.get('cannot_serve_reason', 'resource unavailable')})"
+        )
         line = (
-            f"  {p['patient_id']}: severity={p['severity']} ({p.get('severity_name','?')})"
-            f", waited={p['wait_time']} steps, {servable}"
+            f"  {p['patient_id']}: severity={p['severity']} ({p.get('severity_name', '?')})"
+            f", waited={p['wait_time']} steps, {servable_flag}"
         )
         if p.get("deterioration_countdown"):
-            line += f" âš ï¸ DETERIORATES IN {p['deterioration_countdown']} STEPS"
+            line += f" DETERIORATES IN {p['deterioration_countdown']} STEPS"
         if p.get("requires_icu"):
             line += " [needs ICU bed]"
         if p.get("requires_specialist"):
             line += " [needs 2 doctors]"
         lines.append(line)
 
-    resource_lines = [
-        f"Available doctors: {queue_state['available_doctors']}",
-    ]
+    resource_lines = [f"Available doctors: {queue_state['available_doctors']}"]
     if queue_state.get("available_icu_beds") is not None:
         resource_lines.append(
             f"Available ICU beds: {queue_state['available_icu_beds']}"
@@ -114,40 +211,31 @@ def call_llm(queue_state: dict) -> dict:
         f"| Missed emergencies: {queue_state['missed_emergencies']}\n\n"
         f"CURRENT QUEUE ({queue_state['queue_length']} patients):\n"
         f"{chr(10).join(lines) if lines else '  [Queue is empty]'}\n\n"
-        f"Choose your action. Remember: NEVER wait if any patient has can_serve_now=true."
+        f"Choose your action. NEVER wait if any patient has CAN SERVE status."
     )
-
-    response = client.chat.completions.create(
-        model=MODEL_NAME,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user",   "content": prompt},
-        ],
-        temperature=0.0,
-        max_tokens=150,
-    )
-    raw = response.choices[0].message.content.strip()
-    time.sleep(2)
-
-    # Strip markdown fences if present
-    if "```" in raw:
-        raw = raw.split("```")[1].replace("json", "").strip()
 
     try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user",   "content": prompt},
+            ],
+            temperature=0.0,
+            max_tokens=150,
+        )
+        raw = response.choices[0].message.content.strip()
+        time.sleep(2)
+
+        if "```" in raw:
+            raw = raw.split("```")[1].replace("json", "").strip()
+
         return json.loads(raw)
-    except (json.JSONDecodeError, IndexError):
-        # Fallback: serve highest-priority servable patient, never wait if avoidable
-        servable = [p for p in queue if p.get("can_serve_now", True)]
-        if servable:
-            return {
-                "action": "serve_patient",
-                "patient_id": servable[0]["patient_id"],
-                "reasoning": "fallback â€” highest-priority servable patient",
-            }
-        if queue:
-            # All patients blocked by resources â€” wait is the only option
-            return {"action": "wait", "reasoning": "fallback â€” all patients resource-blocked"}
-        return {"action": "wait", "reasoning": "fallback â€” queue empty"}
+
+    except Exception:
+        # LLM call failed (credits, rate limit, parse error) — use greedy
+        time.sleep(1)
+        return greedy_fallback()
 
 
 def _best_servable_patient(queue: list) -> str | None:
