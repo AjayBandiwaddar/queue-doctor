@@ -1,5 +1,5 @@
-"""
-Inference Script — Queue Doctor
+﻿"""
+Inference Script â€” Queue Doctor
 =================================
 MANDATORY env vars:
     API_BASE_URL   The API endpoint for the LLM.
@@ -13,11 +13,11 @@ STDOUT FORMAT:
 
 Step counting:
     Only meaningful actions count as steps:
-      - start_task       → step 1
-      - serve_patient()  → step N
-      - wait()           → step N
-      - finalize_episode → final step
-    get_queue_state() calls are observations — they do NOT count as steps.
+      - start_task       â†’ step 1
+      - serve_patient()  â†’ step N
+      - wait()           â†’ step N
+      - finalize_episode â†’ final step
+    get_queue_state() calls are observations â€” they do NOT count as steps.
 
 Notes:
     - Triage advisory is deliberately excluded from the LLM prompt.
@@ -28,36 +28,37 @@ Notes:
 """
 
 import json
+import time
 import os
 
 from openai import OpenAI
 from client import QueueDoctorEnv
 
-# ── Configuration ──────────────────────────────────────────────────────────
+# â”€â”€ Configuration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 API_BASE_URL    = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 API_KEY         = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY", "")
 MODEL_NAME      = os.getenv("MODEL_NAME", "meta-llama/Llama-3.1-8B-Instruct")
 ENV_URL         = os.getenv("ENV_URL", "http://localhost:7860")
 ENV_NAME        = "queue_doctor"
-MAX_STEPS_GUARD = 60   # hard cap — prevents infinite loops
+MAX_STEPS_GUARD = 60   # hard cap â€” prevents infinite loops
 
 TASK_IDS = ["task_1_easy", "task_2_medium", "task_3_hard"]
 
 client = OpenAI(api_key=API_KEY, base_url=API_BASE_URL)
 
-# ── Agent System Prompt ────────────────────────────────────────────────────
-# Triage advisory intentionally omitted — agent must reason from raw data.
+# â”€â”€ Agent System Prompt â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Triage advisory intentionally omitted â€” agent must reason from raw data.
 
 SYSTEM_PROMPT = """You are an AI hospital triage coordinator managing an emergency department queue.
 
 MANCHESTER TRIAGE SYSTEM severity levels (1 = most critical):
-  1 = IMMEDIATE    — Life-threatening. Treat NOW. Every step of delay is catastrophic.
-  2 = VERY_URGENT  — Serious. Treat within 1-2 steps. Reward decays at 0.125/step.
-  3 = URGENT       — Significant. Treat within ~6 steps.
-  4 = LESS_URGENT  — Minor-moderate. Treat when possible.
-  5 = NON_URGENT   — Minor. Treat if time allows.
+  1 = IMMEDIATE    â€” Life-threatening. Treat NOW. Every step of delay is catastrophic.
+  2 = VERY_URGENT  â€” Serious. Treat within 1-2 steps. Reward decays at 0.125/step.
+  3 = URGENT       â€” Significant. Treat within ~6 steps.
+  4 = LESS_URGENT  â€” Minor-moderate. Treat when possible.
+  5 = NON_URGENT   â€” Minor. Treat if time allows.
 
-DECISION RULES — follow in strict order:
+DECISION RULES â€” follow in strict order:
 1. Serve severity-1 patients IMMEDIATELY. No exception.
 2. Among equal severity, prefer the patient with the longest wait_time.
 3. If a patient shows deterioration_countdown, they WILL worsen soon.
@@ -67,7 +68,7 @@ DECISION RULES — follow in strict order:
 5. NEVER output wait() if any patient in the queue has can_serve_now=true.
    Only use wait() if the queue is completely empty or ALL patients cannot be served.
 
-OUTPUT FORMAT — respond with ONLY a valid JSON object, no other text, no markdown:
+OUTPUT FORMAT â€” respond with ONLY a valid JSON object, no other text, no markdown:
 {"action": "serve_patient", "patient_id": "P001", "reasoning": "Severity 1 immediate threat"}
 OR
 {"action": "wait", "reasoning": "Queue is empty"}"""
@@ -76,20 +77,20 @@ OR
 def call_llm(queue_state: dict) -> dict:
     """
     Call LLM with current queue state. Returns parsed action decision.
-    Triage advisory is intentionally excluded from the prompt — the agent
+    Triage advisory is intentionally excluded from the prompt â€” the agent
     must reason from raw patient data, not pre-computed recommendations.
     """
     queue = queue_state.get("queue", [])
 
     lines = []
     for p in queue:
-        servable = "✓ CAN SERVE" if p.get("can_serve_now", True) else f"✗ BLOCKED ({p.get('cannot_serve_reason', 'resource unavailable')})"
+        servable = "âœ“ CAN SERVE" if p.get("can_serve_now", True) else f"âœ— BLOCKED ({p.get('cannot_serve_reason', 'resource unavailable')})"
         line = (
             f"  {p['patient_id']}: severity={p['severity']} ({p.get('severity_name','?')})"
             f", waited={p['wait_time']} steps, {servable}"
         )
         if p.get("deterioration_countdown"):
-            line += f" ⚠️ DETERIORATES IN {p['deterioration_countdown']} STEPS"
+            line += f" âš ï¸ DETERIORATES IN {p['deterioration_countdown']} STEPS"
         if p.get("requires_icu"):
             line += " [needs ICU bed]"
         if p.get("requires_specialist"):
@@ -126,6 +127,7 @@ def call_llm(queue_state: dict) -> dict:
         max_tokens=150,
     )
     raw = response.choices[0].message.content.strip()
+    time.sleep(2)
 
     # Strip markdown fences if present
     if "```" in raw:
@@ -140,12 +142,12 @@ def call_llm(queue_state: dict) -> dict:
             return {
                 "action": "serve_patient",
                 "patient_id": servable[0]["patient_id"],
-                "reasoning": "fallback — highest-priority servable patient",
+                "reasoning": "fallback â€” highest-priority servable patient",
             }
         if queue:
-            # All patients blocked by resources — wait is the only option
-            return {"action": "wait", "reasoning": "fallback — all patients resource-blocked"}
-        return {"action": "wait", "reasoning": "fallback — queue empty"}
+            # All patients blocked by resources â€” wait is the only option
+            return {"action": "wait", "reasoning": "fallback â€” all patients resource-blocked"}
+        return {"action": "wait", "reasoning": "fallback â€” queue empty"}
 
 
 def _best_servable_patient(queue: list) -> str | None:
@@ -154,7 +156,7 @@ def _best_servable_patient(queue: list) -> str | None:
     return servable[0]["patient_id"] if servable else None
 
 
-# ── Episode Runner ─────────────────────────────────────────────────────────
+# â”€â”€ Episode Runner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def run_task(env, task_id: str) -> dict:
     """
@@ -162,7 +164,7 @@ def run_task(env, task_id: str) -> dict:
 
     Steps counted: start_task, each serve_patient/wait, finalize_episode.
     get_queue_state() calls are observations and do NOT count as steps.
-    Resource errors do not advance time — agent retries with best servable patient.
+    Resource errors do not advance time â€” agent retries with best servable patient.
     """
     step_num   = 0
     rewards    = []
@@ -171,7 +173,7 @@ def run_task(env, task_id: str) -> dict:
     error_msg  = None
 
     try:
-        # ── Step 1: start task ────────────────────────────────────────────
+        # â”€â”€ Step 1: start task â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         step_num += 1
         raw = env.call_tool("start_task", task_id=task_id)
         task_data = json.loads(raw) if isinstance(raw, str) else raw
@@ -184,13 +186,13 @@ def run_task(env, task_id: str) -> dict:
             flush=True,
         )
 
-        # ── Main episode loop ─────────────────────────────────────────────
+        # â”€â”€ Main episode loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         done         = False
         episode_step = 0
 
         while not done and episode_step < MAX_STEPS_GUARD:
 
-            # Observe current state — NOT a step, no step_num increment
+            # Observe current state â€” NOT a step, no step_num increment
             raw_state   = env.call_tool("get_queue_state")
             queue_state = json.loads(raw_state) if isinstance(raw_state, str) else raw_state
             done        = queue_state.get("done", False)
@@ -212,7 +214,7 @@ def run_task(env, task_id: str) -> dict:
                     action    = "serve_patient"
                     patient_id = best
 
-            # Execute action — this IS a step
+            # Execute action â€” this IS a step
             step_num     += 1
             episode_step += 1
 
@@ -234,7 +236,7 @@ def run_task(env, task_id: str) -> dict:
                 for e in events
             )
             if resource_error and action == "serve_patient":
-                # Time did not advance — don't count this as a step
+                # Time did not advance â€” don't count this as a step
                 step_num     -= 1
                 episode_step -= 1
                 # Retry with best servable patient
@@ -259,7 +261,7 @@ def run_task(env, task_id: str) -> dict:
                 flush=True,
             )
 
-        # ── Final step: finalize episode ──────────────────────────────────
+        # â”€â”€ Final step: finalize episode â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         step_num += 1
         raw_final   = env.call_tool("finalize_episode")
         final       = json.loads(raw_final) if isinstance(raw_final, str) else raw_final
@@ -295,11 +297,11 @@ def run_task(env, task_id: str) -> dict:
     }
 
 
-# ── Entry Point ────────────────────────────────────────────────────────────
+# â”€â”€ Entry Point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def main() -> None:
     print(f"\n{'='*60}", flush=True)
-    print(f"Queue Doctor — Inference", flush=True)
+    print(f"Queue Doctor â€” Inference", flush=True)
     print(f"Model : {MODEL_NAME}", flush=True)
     print(f"Server: {ENV_URL}", flush=True)
     print(f"{'='*60}\n", flush=True)
