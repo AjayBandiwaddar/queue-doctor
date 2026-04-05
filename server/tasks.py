@@ -1,30 +1,30 @@
-# Copyright (c) Ajay Bandiwaddar — OpenEnv Hackathon Round 1
+﻿# Copyright (c) Ajay Bandiwaddar â€” OpenEnv Hackathon Round 1
 """
-Queue Doctor — Task Configurations.
+Queue Doctor â€” Task Configurations.
 
 All patient arrivals are pre-scheduled with fixed IDs.
-No random number generators — fully deterministic and reproducible.
+No random number generators â€” fully deterministic and reproducible.
 
-Task 1 (Easy)  — Basic Triage: static queue, 1 doctor, 10 steps.
-Task 2 (Medium)— Dynamic Queue: dynamic arrivals, 2 doctors, 20 steps.
-Task 3 (Hard)  — Mass Casualty: deterioration, ICU, specialist care,
+Task 1 (Easy)  â€” Basic Triage: static queue, 1 doctor, 10 steps.
+Task 2 (Medium)â€” Dynamic Queue: dynamic arrivals, 2 doctors, 20 steps.
+Task 3 (Hard)  â€” Mass Casualty: deterioration, ICU, specialist care,
                   mass casualty event at step 15, 3 doctors, 30 steps.
 """
 
 TASKS = {
 
-    # ── Task 1: Basic Triage ─────────────────────────────────────────────
+    # â”€â”€ Task 1: Basic Triage â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # A static queue of 6 patients, all present at step 0.
     # Single doctor. 10 steps.
     #
-    # Optimal policy: serve strictly in severity order (1→2→2→3→4→5).
+    # Optimal policy: serve strictly in severity order (1â†’2â†’2â†’3â†’4â†’5).
     # An agent that learns this scores ~0.87.
     # A random agent scores ~0.45 (many suboptimal orderings).
     # This is a genuine RL task: the agent must discover the priority rule.
     #
     # Reward calibration:
     #   Optimal cumulative = 1.0+0.88+0.76+0.64+0.44+0.30 = 4.02
-    #   Random expected ≈ 1.7-1.9
+    #   Random expected â‰ˆ 1.7-1.9
     "task_1_easy": {
         "task_name": "Basic Triage",
         "difficulty": "easy",
@@ -34,7 +34,7 @@ TASKS = {
         "grader": "easy",
         "description": (
             "You are managing an emergency department triage queue with 1 doctor available. "
-            "6 patients are waiting — each with a different severity level (1=most critical, 5=minor). "
+            "6 patients are waiting â€” each with a different severity level (1=most critical, 5=minor). "
             "Each step, you must decide which patient to serve.\n\n"
             "SCORING: Serving a severity-1 patient immediately scores 1.0. "
             "Every step they wait costs you significantly. Lower-severity patients "
@@ -51,10 +51,10 @@ TASKS = {
             {"step": 0, "patient_id": "P006", "severity": 5, "reported_severity": 5},
         ],
         # Optimal cumulative reward (used for score normalization)
-        "optimal_reward": 4.02,
+        "optimal_reward": 4.002,
     },
 
-    # ── Task 2: Dynamic Queue Management ────────────────────────────────
+    # â”€â”€ Task 2: Dynamic Queue Management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Patients arrive throughout the episode at known times.
     # 2 doctors available (can handle specialist patients).
     # Emergency patients appear mid-episode requiring rapid reprioritization.
@@ -75,13 +75,13 @@ TASKS = {
         "grader": "medium",
         "description": (
             "You are managing a busy emergency department with 2 doctors available. "
-            "New patients arrive throughout the 20-step episode — you must adapt dynamically.\n\n"
+            "New patients arrive throughout the 20-step episode â€” you must adapt dynamically.\n\n"
             "SCORING: Composite of throughput (60%) and fairness (40%). "
             "Throughput rewards serving high-severity patients quickly. "
             "Fairness (Jain's Fairness Index) penalizes ignoring lower-priority patients "
             "indefinitely. A perfect score requires both speed and equity.\n\n"
             "With 2 doctors, specialist patients (requiring 2 doctors) can be served. "
-            "Waiting incurs penalties — especially when emergencies are in the queue."
+            "Waiting incurs penalties â€” especially when emergencies are in the queue."
         ),
         "arrivals": [
             # Step 0: Initial queue
@@ -110,10 +110,10 @@ TASKS = {
             {"step": 16, "patient_id": "P017", "severity": 2, "reported_severity": 2},
         ],
         # Optimal reward computed by running optimal policy simulation
-        "optimal_reward": 11.8,
+        "optimal_reward": 11.211,
     },
 
-    # ── Task 3: Mass Casualty Resource Management ────────────────────────
+    # â”€â”€ Task 3: Mass Casualty Resource Management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # The hardest task. Combines all elements:
     #
     # Patient deterioration: P005 and P006 (arriving step 3) will worsen if
@@ -124,7 +124,7 @@ TASKS = {
     # beds before the mass casualty event (step 15) is catastrophic.
     #
     # Triage uncertainty: P008 reported severity 2 but true severity is 3.
-    # Agent acts on reported severity — this is realistic triage error.
+    # Agent acts on reported severity â€” this is realistic triage error.
     #
     # Mass casualty event at step 15: 5 patients arrive simultaneously
     # (3 emergencies, 2 very urgent). An agent that hasn't conserved resources
@@ -148,7 +148,7 @@ TASKS = {
             "- Patients marked 'requires_icu' consume 1 ICU bed when served (permanent).\n"
             "- Patients marked 'requires_specialist' consume 2 doctors simultaneously.\n"
             "- If resources are unavailable, the patient cannot be served.\n\n"
-            "DETERIORATION: Some patients will worsen if not treated in time — "
+            "DETERIORATION: Some patients will worsen if not treated in time â€” "
             "their severity increases, making them harder to handle. "
             "Watch the deterioration_countdown field carefully.\n\n"
             "MASS CASUALTY EVENT: A surge occurs mid-episode. "
@@ -164,7 +164,7 @@ TASKS = {
              "requires_specialist": True},
             {"step": 0, "patient_id": "P003", "severity": 3, "reported_severity": 3},
             {"step": 0, "patient_id": "P004", "severity": 4, "reported_severity": 4},
-            # Step 3: Deteriorating patients — must treat before countdown hits 0
+            # Step 3: Deteriorating patients â€” must treat before countdown hits 0
             {"step": 3, "patient_id": "P005", "severity": 2, "reported_severity": 2,
              "deterioration_countdown": 4},   # worsens at step 7 if untreated
             {"step": 3, "patient_id": "P006", "severity": 3, "reported_severity": 3,
@@ -177,7 +177,7 @@ TASKS = {
             {"step": 10, "patient_id": "P010", "severity": 2, "reported_severity": 2,
              "deterioration_countdown": 5},
             {"step": 10, "patient_id": "P011", "severity": 3, "reported_severity": 3},
-            # Step 15: MASS CASUALTY EVENT — 5 patients arrive simultaneously
+            # Step 15: MASS CASUALTY EVENT â€” 5 patients arrive simultaneously
             {"step": 15, "patient_id": "P012", "severity": 1, "reported_severity": 1,
              "requires_icu": True},
             {"step": 15, "patient_id": "P013", "severity": 1, "reported_severity": 1},
@@ -193,6 +193,6 @@ TASKS = {
             # Step 25: Final
             {"step": 25, "patient_id": "P020", "severity": 3, "reported_severity": 3},
         ],
-        "optimal_reward": 15.5,
+        "optimal_reward": 11.379,
     },
 }
