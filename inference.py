@@ -263,7 +263,7 @@ def run_task(env, task_id: str) -> dict:
     try:
         # â”€â”€ Step 1: start task â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         step_num += 1
-        raw = env.call_tool("start_task", task_id=task_id, seed=99)
+        raw = env.call_tool("start_task", task_id=task_id)
         task_data = json.loads(raw) if isinstance(raw, str) else raw
         task_name = task_data.get("task_name", task_id)
 
