@@ -87,7 +87,7 @@ TASKS = {
     "task_2_medium": {
         "task_name": "Dynamic Queue Management",
         "difficulty": "medium",
-        "max_steps": 20,
+        "max_steps": 15,
         "num_doctors": 2,
         "icu_beds": 0,
         "grader": "medium",
@@ -153,7 +153,7 @@ TASKS = {
         ],
         # Computed by calibrate.py after updating this task
         # Placeholder — run calibrate.py to get exact value
-        "optimal_reward": 13.15,
+        "optimal_reward": 9.948,
     },
 
     # ── Task 3: Mass Casualty Resource Management ─────────────────────────

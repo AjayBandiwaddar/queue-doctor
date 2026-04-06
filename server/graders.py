@@ -1,6 +1,6 @@
-# Copyright (c) Ajay Bandiwaddar — OpenEnv Hackathon Round 1
+﻿# Copyright (c) Ajay Bandiwaddar â€” OpenEnv Hackathon Round 1
 """
-Queue Doctor — Principled Graders.
+Queue Doctor â€” Principled Graders.
 
 Every scoring formula and every weight is derived from published clinical
 and operations research literature. No numbers exist to hit target scores.
@@ -65,7 +65,7 @@ def grade_easy(engine) -> dict:
     score = cumulative_reward / optimal_reward
 
     Optimal reward computed by running the optimal greedy policy offline
-    (calibrate.py). Standard RL episodic return normalization — no penalties,
+    (calibrate.py). Standard RL episodic return normalization â€” no penalties,
     no arbitrary coefficients.
 
     Target: ~0.80 (misreported patient causes agent to serve the true
@@ -102,7 +102,7 @@ def grade_medium(engine) -> dict:
     Weight rationale (Moskop & Sklar, 2002):
     60% throughput reflects that speed of care directly reduces mortality.
     40% fairness reflects that systematic neglect of lower-priority patients
-    is a clinical and ethical failure — especially for longer episodes.
+    is a clinical and ethical failure â€” especially for longer episodes.
 
     Target: ~0.55-0.62 (misreported patients + specialist conflicts + more
     patients than can be served depress both throughput and fairness).
@@ -160,13 +160,13 @@ def grade_hard(engine) -> dict:
         time_score       = cumulative_reward / optimal_reward
         fairness_score   = Jain's Fairness Index over wait times
         resource_score   = ICU/specialist patients served / total resource patients
-        missed_penalty   = min(0.40, missed_emergencies * 0.02)
+        missed_penalty   = min(0.40, missed_emergencies * 0.03)
 
     Component weight rationale (WHO Emergency Care System Framework, 2019):
-        0.35 survival  — patient death is the primary failure mode
-        0.25 time      — time-to-treatment directly correlates with outcomes
-        0.20 fairness  — equity in care is a WHO core principle
-        0.20 resources — efficient use of scarce ICU/specialist capacity
+        0.35 survival  â€” patient death is the primary failure mode
+        0.25 time      â€” time-to-treatment directly correlates with outcomes
+        0.20 fairness  â€” equity in care is a WHO core principle
+        0.20 resources â€” efficient use of scarce ICU/specialist capacity
 
     Missed emergency penalty rationale (Soremekun et al., 2011):
         Each step (~10 min) a severity-1 patient waits increases mortality.
@@ -190,7 +190,7 @@ def grade_hard(engine) -> dict:
 
     arrivals = engine.task_config["arrivals"]
 
-    # 1. Survival score — critical patients (true sev 1 or 2) treated
+    # 1. Survival score â€” critical patients (true sev 1 or 2) treated
     critical_arrivals = [a for a in arrivals if a["severity"] <= 2]
     critical_served   = sum(1 for s in engine.served if s["true_severity"] <= 2)
     survival_score    = (
@@ -207,7 +207,7 @@ def grade_hard(engine) -> dict:
     wait_times     = [s["wait_time"] for s in engine.served]
     fairness_score = _jains_fairness_index(wait_times)
 
-    # 4. Resource efficiency — ICU + specialist patients served
+    # 4. Resource efficiency â€” ICU + specialist patients served
     resource_arrivals = [
         a for a in arrivals
         if a.get("requires_icu") or a.get("requires_specialist")
@@ -233,7 +233,7 @@ def grade_hard(engine) -> dict:
     # Clinically: each ~10-min delay for severity-1 patient increases mortality.
     # 0.02 per missed_emergency step, capped at 0.40.
     # Cap prevents uncontrollable ICU-blocked patients from making score negative.
-    missed_penalty = min(0.40, engine.missed_emergencies * 0.02)
+    missed_penalty = min(0.40, engine.missed_emergencies * 0.03)
     score          = max(0.0, base_score - missed_penalty)
 
     return {
