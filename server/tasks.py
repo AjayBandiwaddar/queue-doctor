@@ -153,7 +153,7 @@ TASKS = {
         ],
         # Computed by calibrate.py after updating this task
         # Placeholder — run calibrate.py to get exact value
-        "optimal_reward": 9.948,
+        "optimal_reward": 6.766,
     },
 
     # ── Task 3: Mass Casualty Resource Management ─────────────────────────
