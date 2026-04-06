@@ -216,6 +216,6 @@ TASKS = {
         # (ICU bed consumed by P001). This is by design — binding constraints
         # mean the optimal policy itself cannot achieve a perfect score.
         # The grader accounts for this: survival_score = critical_served / critical_total.
-        "optimal_reward": 11.379,
+        "optimal_reward": 10.05,
     },
 }
