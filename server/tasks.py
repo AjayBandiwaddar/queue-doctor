@@ -87,7 +87,7 @@ TASKS = {
     "task_2_medium": {
         "task_name": "Dynamic Queue Management",
         "difficulty": "medium",
-        "max_steps": 15,
+        "max_steps": 10,
         "num_doctors": 2,
         "icu_beds": 0,
         "grader": "medium",
