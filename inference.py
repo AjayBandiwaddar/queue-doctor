@@ -286,7 +286,11 @@ def run_task(env, task_id: str, episode_seed: int) -> dict:
 
     success_str = "true" if final_score >= 0.35 else "false"
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
-    print(f"[END] success={success_str} steps={step_num} rewards={rewards_str}", flush=True)
+    print(
+    f"[END] success={success_str} steps={step_num} "
+    f"score={final_score:.2f} rewards={rewards_str}",
+    flush=True,
+)
 
     return {
         "task_id":   task_id,
