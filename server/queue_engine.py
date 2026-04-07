@@ -1,15 +1,18 @@
 # Copyright (c) Ajay Bandiwaddar — OpenEnv Hackathon Round 1
 """
-Queue Engine — Core RL State Machine for Queue Doctor.
+Queue Engine -- Core RL State Machine for Queue Doctor.
 
 Every serve_patient() or wait() call advances the simulation by 1 step.
 Resource errors (no ICU bed, insufficient doctors) do NOT advance the step.
 
-Key design decision — queue sorted by REPORTED severity:
-    The agent sees patients sorted by what they report, not their true
-    clinical severity. This is realistic (triage nurses rely on self-report)
-    and means misreporting genuinely deceives the agent, creating authentic
-    difficulty without artificial tricks.
+Key design decisions:
+    1. Queue sorted by REPORTED severity -- misreporting genuinely deceives
+       the agent (realistic: triage nurses rely on self-report initially).
+    2. wait() penalty only fires for SERVABLE patients -- patients that
+       cannot be served due to resource constraints (ICU full, insufficient
+       doctors) do not contribute to the wait penalty. This prevents
+       double-counting: unservable patients already penalize via the hard
+       grader's missed_emergency counter at finalize_episode().
 """
 
 import random
@@ -49,7 +52,7 @@ class QueueEngine:
                     step_offset = rng.choice([-1, 1])
                 if rng.random() < 0.15:
                     sev_offset = rng.choice([-1, 1])
-                    if a["severity"] != 1 and sev_offset == -1 and a["severity"] + sev_offset < 1:
+                    if a["severity"] != 1 and a["severity"] + sev_offset < 1:
                         sev_offset = 0
                     if a["severity"] == 1 and sev_offset == 1:
                         sev_offset = 0
@@ -75,10 +78,16 @@ class QueueEngine:
 
         self._process_arrivals(0)
 
+    def _can_serve(self, p: Patient) -> bool:
+        """Check if patient can be served given current resources."""
+        doctors_needed = 2 if p.requires_specialist else 1
+        return (
+            self.available_doctors >= doctors_needed and
+            (not p.requires_icu or self.available_icu >= 1)
+        )
+
     def get_state(self) -> dict:
-        # ── Sort by REPORTED severity so misreporting genuinely deceives agent ──
-        # This is realistic: triage nurses initially sort by self-reported acuity.
-        # True severity is revealed only through clinical assessment (serving).
+        # Sort by REPORTED severity -- misreporting genuinely deceives agent
         sorted_queue = sorted(
             self.queue,
             key=lambda p: (p.reported_severity, -p.wait_time)
@@ -102,14 +111,11 @@ class QueueEngine:
         return state
 
     def _patient_dict(self, p: Patient) -> dict:
-        d = p.to_dict()
-        doctors_needed = 2 if p.requires_specialist else 1
-        can_serve = (
-            self.available_doctors >= doctors_needed and
-            (not p.requires_icu or self.available_icu >= 1)
-        )
+        d              = p.to_dict()
+        can_serve      = self._can_serve(p)
         d["can_serve_now"] = can_serve
         if not can_serve:
+            doctors_needed = 2 if p.requires_specialist else 1
             if p.requires_icu and self.available_icu == 0:
                 d["cannot_serve_reason"] = "No ICU beds available"
             elif self.available_doctors < doctors_needed:
@@ -176,9 +182,8 @@ class QueueEngine:
 
         events = [
             f"Step {self.step}: Served {patient_id} "
-            f"(reported sev={patient.reported_severity}, true sev={patient.severity}, "
-            f"waited {patient.wait_time} steps)"
-            f" -> reward {reward:.3f}{resource_note}"
+            f"(reported={patient.reported_severity}, true={patient.severity}, "
+            f"waited {patient.wait_time} steps) -> reward {reward:.3f}{resource_note}"
         ]
 
         self.step += 1
@@ -189,28 +194,58 @@ class QueueEngine:
         return reward, self.get_state(), events
 
     def wait(self) -> Tuple[float, dict, List[str]]:
-        """Skip step. Penalized if patients are waiting. Always advances time."""
+        """
+        Skip step. Penalized only for SERVABLE patients waiting.
+
+        Key fix: patients that cannot be served due to resource constraints
+        (ICU full, insufficient doctors) do NOT contribute to the wait penalty.
+        They already penalize via missed_emergencies at finalize_episode().
+        Counting them twice would make waiting with ICU-blocked patients
+        catastrophically punishing even when the agent has no alternative.
+
+        Penalty tiers (based on highest reported severity among SERVABLE patients):
+            Severity-1 servable in queue: -0.30 per patient
+            Severity 2-3 servable:        -0.10
+            Any servable patient:         -0.05
+            No servable patients:          0.00 (agent has no valid action)
+        """
         penalty = 0.0
         events  = []
 
-        if self.queue:
-            # Use REPORTED severity for visible queue — true severity is hidden
-            emergencies = sum(1 for p in self.queue if p.reported_severity == 1)
-            urgent      = sum(1 for p in self.queue if 2 <= p.reported_severity <= 3)
+        # Only count SERVABLE patients for the penalty
+        servable_patients = [p for p in self.queue if self._can_serve(p)]
+
+        if servable_patients:
+            emergencies = sum(
+                1 for p in servable_patients if p.reported_severity == 1
+            )
+            urgent = sum(
+                1 for p in servable_patients if 2 <= p.reported_severity <= 3
+            )
             if emergencies > 0:
                 penalty = -0.3 * emergencies
                 events.append(
-                    f"CRITICAL: Waited with {emergencies} IMMEDIATE patient(s)! "
+                    f"Waited with {emergencies} IMMEDIATE servable patient(s)! "
                     f"Penalty: {penalty:.2f}"
                 )
             elif urgent > 0:
                 penalty = -0.1
-                events.append(f"Waited with {urgent} urgent patient(s). Penalty: -0.10")
+                events.append(
+                    f"Waited with {urgent} urgent servable patient(s). Penalty: -0.10"
+                )
             else:
                 penalty = -0.05
-                events.append("Waited with non-urgent patients. Minor penalty: -0.05")
+                events.append("Waited with non-urgent servable patients. Penalty: -0.05")
+        elif self.queue:
+            # Patients present but ALL resource-blocked -- no penalty
+            # (agent physically cannot serve anyone; missed_emergencies tracks this)
+            blocked_count = len(self.queue)
+            events.append(
+                f"Step {self.step}: {blocked_count} patient(s) present but all "
+                f"resource-blocked -- no penalty. Missed emergencies tracked at finalize."
+            )
         else:
-            events.append(f"Step {self.step}: Queue empty — no penalty.")
+            events.append(f"Step {self.step}: Queue empty -- no penalty.")
 
         self.cumulative_reward += penalty
         self.step += 1
@@ -227,9 +262,10 @@ class QueueEngine:
             for p in new_arrivals:
                 self.queue.append(p)
             names = ", ".join(
-                f"{p.patient_id}(reported={p.reported_severity})" for p in new_arrivals
+                f"{p.patient_id}(reported={p.reported_severity})"
+                for p in new_arrivals
             )
-            events.append(f"Step {self.step}: New arrivals — {names}")
+            events.append(f"Step {self.step}: New arrivals -- {names}")
             if len(new_arrivals) >= 4:
                 events.append(
                     f"MASS CASUALTY EVENT: "
@@ -254,7 +290,7 @@ class QueueEngine:
 
         for patient in self.queue:
             patient.wait_time += 1
-            if patient.severity == 1:   # True severity
+            if patient.severity == 1:
                 self.missed_emergencies += 1
 
         self.available_doctors = self.num_doctors
@@ -266,8 +302,8 @@ class QueueEngine:
 
     def _compute_reward(self, patient: Patient) -> float:
         """
-        Manchester Triage System reward. Uses TRUE severity.
-        1 step = 10 minutes.
+        Manchester Triage System reward using TRUE severity.
+        1 step = approx 10 minutes of real time.
         """
         w = patient.wait_time
         s = patient.severity
@@ -287,11 +323,10 @@ class QueueEngine:
             return max(0.0, 0.40 - w * 0.020)
 
     def _build_advisory(self, sorted_queue: list) -> str:
-        """Advisory based on REPORTED severity — same info the agent has."""
+        """Advisory based on REPORTED severity. Excluded from LLM prompt."""
         if not sorted_queue:
             return "Queue is empty."
         parts        = []
-        # Use reported severity for advisory (same as agent sees)
         emergencies  = [p for p in self.queue if p.reported_severity == 1]
         deteriorating = [
             p for p in self.queue
@@ -310,11 +345,14 @@ class QueueEngine:
         if self.icu_capacity > 0 and self.available_icu == 0:
             icu_waiting = [p for p in self.queue if p.requires_icu]
             if icu_waiting:
-                parts.append(f"ICU FULL: {len(icu_waiting)} patient(s) cannot be admitted.")
+                parts.append(
+                    f"ICU FULL: {len(icu_waiting)} patient(s) cannot be admitted."
+                )
         if not parts:
             top = sorted_queue[0]
             parts.append(
-                f"Highest reported priority: {top.patient_id} "
-                f"(reported sev={top.reported_severity}, waited {top.wait_time} steps)"
+                f"Highest priority: {top.patient_id} "
+                f"(reported sev={top.reported_severity}, "
+                f"waited {top.wait_time} steps)"
             )
         return " | ".join(parts)
