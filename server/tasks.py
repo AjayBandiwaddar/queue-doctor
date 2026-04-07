@@ -87,7 +87,7 @@ TASKS = {
     "task_2_medium": {
         "task_name": "Dynamic Queue Management",
         "difficulty": "medium",
-        "max_steps": 10,
+        "max_steps": 20,
         "num_doctors": 2,
         "icu_beds": 0,
         "grader": "medium",
@@ -142,18 +142,25 @@ TASKS = {
             {"step": 13, "patient_id": "P016", "severity": 2, "reported_severity": 2},
             {"step": 13, "patient_id": "P017", "severity": 4, "reported_severity": 4},
 
-            # Step 15: final wave — most won't be served (run out of steps)
-            {"step": 15, "patient_id": "P018", "severity": 3, "reported_severity": 3},
-            {"step": 15, "patient_id": "P019", "severity": 2, "reported_severity": 2},
-
-            # Step 17: very late — almost certainly unservable
-            {"step": 17, "patient_id": "P020", "severity": 3, "reported_severity": 3},
-            {"step": 17, "patient_id": "P021", "severity": 4, "reported_severity": 4},
-            {"step": 17, "patient_id": "P022", "severity": 5, "reported_severity": 5},
+            # Step 15: Large late wave — most won't be served
+            {"step": 15, "patient_id": "P023", "severity": 2, "reported_severity": 2},
+            {"step": 15, "patient_id": "P024", "severity": 3, "reported_severity": 3},
+            {"step": 15, "patient_id": "P025", "severity": 4, "reported_severity": 4},
+            {"step": 15, "patient_id": "P026", "severity": 2, "reported_severity": 2},
+            {"step": 15, "patient_id": "P027", "severity": 3, "reported_severity": 3},
+            # Step 17: More unservable patients
+            {"step": 17, "patient_id": "P028", "severity": 2, "reported_severity": 2},
+            {"step": 17, "patient_id": "P029", "severity": 3, "reported_severity": 3},
+            {"step": 17, "patient_id": "P030", "severity": 4, "reported_severity": 4},
+            {"step": 17, "patient_id": "P031", "severity": 2, "reported_severity": 2},
+            {"step": 17, "patient_id": "P032", "severity": 3, "reported_severity": 3},
+            # Step 19: Final impossible wave
+            {"step": 19, "patient_id": "P033", "severity": 2, "reported_severity": 2},
+            {"step": 19, "patient_id": "P034", "severity": 3, "reported_severity": 3},
         ],
         # Computed by calibrate.py after updating this task
         # Placeholder — run calibrate.py to get exact value
-        "optimal_reward": 6.766,
+        "optimal_reward": 14.073,
     },
 
     # ── Task 3: Mass Casualty Resource Management ─────────────────────────
