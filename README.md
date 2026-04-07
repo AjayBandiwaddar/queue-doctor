@@ -1,4 +1,18 @@
 ﻿---
+title: Queue Doctor
+emoji: 🏥
+colorFrom: red
+colorTo: red
+sdk: docker
+pinned: false
+tags:
+  - openenv
+  - rl
+  - reinforcement-learning
+  - healthcare
+  - triage
+  - agent
+---
 
 
 title: Queue Doctor
@@ -16,7 +30,7 @@ tags:
   - agent
 ---
 
-# Queue Doctor -  OpenEnv Hospital Triage Environment
+# Queue Doctor â€” OpenEnv Hospital Triage Environment
 
 A genuine multi-step reinforcement learning environment for hospital emergency
 department triage, built for the Meta PyTorch OpenEnv Hackathon.
