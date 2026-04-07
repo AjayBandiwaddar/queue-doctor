@@ -78,7 +78,7 @@ def grade_easy(engine) -> dict:
     """
     optimal      = engine.task_config.get("optimal_reward", 3.96)
     total_reward = sum(s["reward"] for s in engine.served)
-    score        = min(1.0, max(0.0, total_reward / optimal))
+    score        = min(0.999, max(0.001, total_reward / optimal))
 
     return {
         "score":             round(score, 4),
@@ -138,7 +138,7 @@ def grade_medium(engine) -> dict:
     wait_times     = [s["wait_time"] for s in engine.served]
     fairness_score = _jains_fairness_index(wait_times)
 
-    score = min(1.0, max(0.0,
+    score = min(0.999, max(0.001,
         0.60 * effective_throughput + 0.40 * fairness_score
     ))
 
@@ -230,7 +230,7 @@ def grade_hard(engine) -> dict:
     )
 
     # Base composite
-    base_score = min(1.0, max(0.0,
+    base_score = min(0.999, max(0.001,
         0.35 * survival_score +
         0.25 * time_score     +
         0.20 * fairness_score +
