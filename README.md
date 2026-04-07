@@ -14,22 +14,6 @@ tags:
   - agent
 ---
 
-
-title: Queue Doctor
-emoji: ðŸ¥
-colorFrom: red
-colorTo: red
-sdk: docker
-pinned: false
-tags:
-  - openenv
-  - rl
-  - reinforcement-learning
-  - healthcare
-  - triage
-  - agent
----
-
 # Queue Doctor â€” OpenEnv Hospital Triage Environment
 
 A genuine multi-step reinforcement learning environment for hospital emergency
