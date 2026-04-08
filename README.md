@@ -2,7 +2,7 @@
 title: Queue Doctor
 emoji: 🏥
 colorFrom: red
-colorTo: orange
+colorTo: red
 sdk: docker
 pinned: false
 tags:
@@ -25,7 +25,7 @@ tags:
 
 Queue Doctor places an AI agent in charge of a hospital emergency department. At every step, the agent observes the queue of waiting patients and decides who to treat next. The environment state changes meaningfully after every decision — new patients arrive on a fixed schedule, wait times accumulate, patient conditions deteriorate — making this a true **Markov Decision Process**.
 
-**A better policy produces measurably better outcomes.** A random agent scores ~0.40 on Task 1. An optimal agent scores ~0.98. That gap is exactly what RL training is designed to close.
+**A better policy produces measurably better outcomes.** The LLM agent scores 0.81 on Task 1 under triage uncertainty, 0.61 on Task 2 under resource pressure, and 0.29 on Task 3 under mass casualty conditions. That difficulty gradient is exactly what RL training is designed to exploit.
 
 ---
 
@@ -35,9 +35,9 @@ Unlike document classification or single-step benchmarks, every action in Queue 
 
 - Serving Patient A now means Patient B's wait time increases by 1 step, reducing the reward available for serving them later
 - Ignoring a deteriorating patient means their severity worsens at step N+3, making the queue harder to manage going forward
-- Conserving ICU beds in steps 1–14 (Task 3) is the only way to survive the mass casualty surge at step 15
+- Conserving the single ICU bed in steps 1–11 (Task 3) is the only way to survive the mass casualty surge at step 12
 
-The agent must discover non-obvious strategies: serve deteriorating patients before higher-severity stable ones, reserve specialist capacity before a predicted surge, and balance urgency with fairness across 20–30 step episodes.
+The agent must discover non-obvious strategies: serve deteriorating patients before higher-severity stable ones, reserve specialist capacity before an unpredicted surge, and balance urgency with fairness across 10–30 step episodes.
 
 ---
 
@@ -52,7 +52,7 @@ The agent must discover non-obvious strategies: serve deteriorating patients bef
 | Steps | 10 |
 | Grader | Normalized cumulative reward |
 
-**Challenge:** Discover the optimal service order. The reward function follows Manchester Triage System decay rates — serving a severity-1 patient at wait=2 already loses 80% of the available reward. The agent must internalize that every step of delay is costly, and that the penalty compounds differently per severity level.
+**Challenge:** One patient (P001) self-reports severity 4 but has true clinical severity 1. The agent, acting on reported severity, serves P001 last — by which point the severity-1 reward has decayed to zero. The agent must internalize that patient self-reports are unreliable, and that every step of delay for a severity-1 patient is catastrophic.
 
 **Baseline scores (meta-llama/Llama-3.1-8B-Instruct)**
 
@@ -69,12 +69,12 @@ The agent must discover non-obvious strategies: serve deteriorating patients bef
 
 | Property | Value |
 |---|---|
-| Patients | 17 (arriving in 6 waves across the episode) |
+| Patients | 29 (arriving in 10 waves across the episode) |
 | Doctors | 2 |
 | Steps | 20 |
-| Grader | Throughput (75%) + MTS Timeliness Fairness (25%) |
+| Grader | Throughput (60%) + Fairness (40%) |
 
-**Challenge:** Emergency patients arrive unexpectedly at steps 4 and 10, requiring rapid reprioritization. A pure greedy policy neglects lower-priority patients indefinitely, which the timeliness fairness component penalizes. The agent must balance urgency with equity.
+**Challenge:** 29 patients arrive across 10 waves, far more than can be served in 20 steps. Two patients misreport severity (P001 claims severity 1, true severity 3; P009 claims severity 2, true severity 4). Two specialist patients (P006, P014) each require both doctors simultaneously — serving them blocks two regular patients that step. A pure greedy policy neglects lower-priority patients in the late waves, which the fairness component penalizes. The agent must balance urgency with equity under resource scarcity.
 
 **Grader weight rationale:** Jones SS et al. (2009), *J Biomed Inform* — empirical ED throughput/fairness tradeoff analysis.
 
@@ -93,21 +93,22 @@ The agent must discover non-obvious strategies: serve deteriorating patients bef
 
 | Property | Value |
 |---|---|
-| Patients | 20 (across 7 arrival waves) |
+| Patients | 21 (across 7 arrival waves) |
 | Doctors | 3 |
-| ICU beds | 2 (consumed permanently when used) |
-| Steps | 22 |
-| Grader | Survival (40%) + Time-to-Treatment (25%) + Timeliness (20%) + Resource Efficiency (15%) |
+| ICU beds | 1 (consumed permanently when used) |
+| Steps | 30 |
+| Grader | Survival (35%) + Time-to-Treatment (25%) + Fairness (20%) + Resource Efficiency (20%) |
 
 **Complexity elements:**
 
-- **Patient deterioration:** P005 and P006 worsen if untreated within 4 and 3 steps respectively. Missing the countdown means their severity increases and they become harder to treat.
-- **ICU constraints:** 2 ICU beds total. Patients requiring ICU cannot be served when beds are full. Running out before step 15 is catastrophic.
-- **Specialist care:** Some patients require 2 doctors simultaneously. Serving them when only 1 doctor is available returns an error without wasting a step.
+- **Patient deterioration:** P005 and P006 worsen if untreated within 3 and 2 steps respectively. Missing the countdown means their severity increases and they become harder to treat.
+- **ICU constraints:** Only 1 ICU bed available total. Patients requiring ICU cannot be served when the bed is occupied. P001 arrives at step 0 and consumes the bed immediately — P012 and P015 (both ICU-requiring) arrive at the step 12 surge and are permanently unservable regardless of strategy.
+- **Specialist care:** Some patients require 2 doctors simultaneously. Serving them when fewer doctors are available returns an error without wasting a step.
 - **Triage uncertainty:** P008 self-reports severity 2 but true severity is 3. The agent acts on reported severity — this reflects real clinical triage error.
-- **Mass casualty event at step 15:** 5 patients arrive simultaneously (3 emergencies, 2 very urgent). An agent that has not conserved ICU and specialist capacity cannot handle the surge.
+- **Mass casualty event at step 12:** 5 patients arrive simultaneously (3 emergencies, 2 very urgent). The agent has no forewarning — this tests adaptive replanning under sudden crisis.
+- **Missed emergency penalty:** Each step a severity-1 patient spends waiting accumulates a penalty in the final grader, reflecting real mortality risk curves for untreated emergencies.
 
-**Grader weight rationale:** WHO Emergency Care System Framework (2019). Survival weighted highest (40%) because failure here means patient death.
+**Grader weight rationale:** WHO Emergency Care System Framework (2019). Survival weighted highest (35%) because failure here means patient death.
 
 **Baseline scores**
 
@@ -187,7 +188,7 @@ Reference: Manchester Triage Group (2014). *Emergency Triage*, 3rd Edition.
   "queue_length": 5,
   "available_doctors": 2,
   "available_icu_beds": 1,
-  "total_icu_beds": 2,
+  "total_icu_beds": 1,
   "patients_served": 3,
   "missed_emergencies": 0,
   "cumulative_reward": 2.375,
@@ -213,13 +214,15 @@ list_tasks()
 
 ## Policy Distinguishability
 
-The environment produces meaningfully different scores for different policies — confirming genuine RL signal:
+The environment produces meaningfully different scores across seeds, confirming the environment has genuine stochastic signal and is not trivially solvable:
 
-| Task | Optimal (greedy) | Random | Worst (reverse) | Gap |
-|---|---|---|---|---|
-| Basic Triage | 0.9955 | 0.8058 | 0.6979 | +0.30 |
-| Dynamic Queue | 0.9706 | 0.7996 | 0.7335 | +0.24 |
-| Mass Casualty | 0.8748 | 0.8187 | 0.7691 | +0.11 |
+| Task | Min score (across seeds) | Max score (across seeds) | Variance |
+|---|---|---|---|
+| Basic Triage | 0.7903 | 0.9955 | High — triage uncertainty changes per seed |
+| Dynamic Queue | 0.5972 | 0.7784 | Medium — patient wave timing varies |
+| Mass Casualty | 0.2890 | 0.8449 | High — ICU allocation is seed-sensitive |
+
+The wide score range on Task 3 (0.29–0.84) reflects that the single ICU bed creates catastrophic failure modes for policies that do not adapt to the seed's specific patient ordering.
 
 ---
 
