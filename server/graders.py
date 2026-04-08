@@ -115,7 +115,7 @@ def grade_medium(engine) -> dict:
     """
     if not engine.served:
         return {
-            "score":            0.0,
+            "score":            0.001,
             "throughput_score": 0.0,
             "fairness_score":   0.0,
             "patients_served":  0,
@@ -187,7 +187,7 @@ def grade_hard(engine) -> dict:
     """
     if not engine.served:
         return {
-            "score":           0.0,
+            "score":           0.001,
             "survival_score":  0.0,
             "time_score":      0.0,
             "fairness_score":  0.0,
